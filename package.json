@@ -19,15 +19,17 @@
   "author": "McDee Marketplace",
   "scripts": {
     "build": "next build",
+    "start": "next start",
+    "render:build": "npm run build",
+    "render:start": "npm run start",
+    "dev": "next dev",
+    "lint": "next lint",
+    "test": "echo \"No tests specified\" && exit 0",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:reset": "prisma db push --force-reset && npm run db:seed",
     "db:seed": "tsx scripts/seed-database.ts",
-    "db:studio": "prisma studio",
-    "dev": "next dev",
-    "lint": "next lint",
-    "start": "next start",
-    "test": "echo \"No tests specified\" && exit 0"
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@prisma/client": "latest",
