@@ -22,6 +22,7 @@
     "start": "next start",
     "render:build": "npm run build",
     "render:start": "npm run start",
+    "postinstall": "npm install next",
     "dev": "next dev",
     "lint": "next lint",
     "test": "echo \"No tests specified\" && exit 0",
@@ -30,6 +31,9 @@
     "db:reset": "prisma db push --force-reset && npm run db:seed",
     "db:seed": "tsx scripts/seed-database.ts",
     "db:studio": "prisma studio"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
     "@prisma/client": "latest",
