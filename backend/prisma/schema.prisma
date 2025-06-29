@@ -1,0 +1,593 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. USERS & CORE SYSTEM
+model User {
+  id         Int      @id @default(autoincrement())
+  name       String
+  email      String   @unique
+  phone      String   @unique
+  password   String
+  userType   UserType @map("user_type")
+  status     UserStatus @default(ACTIVE)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  vendor            Vendor?
+  verifications     Verification[]
+  wallet            Wallet?
+  sentTransfers     P2pTransfer[] @relation("SenderTransfers")
+  receivedTransfers P2pTransfer[] @relation("ReceiverTransfers")
+  addresses         Address[]
+  admin             Admin?
+  
+  // Orders across modules
+  orders            Order[]
+  foodOrders        FoodOrder[]
+  apartmentBookings ApartmentBooking[]
+  serviceBookings   ServiceBooking[]
+  rides             Ride[]
+  vehicleProblems   VehicleProblem[]
+  productReviews    ProductReview[]
+  repairBookings    RepairBooking[]
+  riders            Rider[]
+  notifications     Notification[]
+
+  @@map("users")
+}
+
+model Vendor {
+  id                  Int         @id @default(autoincrement())
+  userId              Int         @unique @map("user_id")
+  vendorType          VendorType  @map("vendor_type")
+  businessName        String      @map("business_name")
+  businessDescription String?     @map("business_description")
+  businessLogo        String?     @map("business_logo")
+  rating              Float       @default(0)
+  isVerified          Boolean     @default(false) @map("is_verified")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Products and services
+  products            Product[]
+  autoServices        AutoService[]
+  foodMenus           FoodMenu[]
+  apartments          Apartment[]
+  riders              Rider[]
+  services            Service[]
+  
+  // Orders
+  foodOrders          FoodOrder[]
+
+  @@map("vendors")
+}
+
+model Verification {
+  id         Int                @id @default(autoincrement())
+  userId     Int                @map("user_id")
+  type       VerificationType
+  value      String
+  status     VerificationStatus @default(PENDING)
+  verifiedAt DateTime?          @map("verified_at")
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("verifications")
+}
+
+model Wallet {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
+  balance   Float    @default(0)
+  currency  String   @default("NGN")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id                   Int                     @id @default(autoincrement())
+  walletId             Int                     @map("wallet_id")
+  type                 TransactionType
+  amount               Float
+  description          String
+  transactionReference String                  @map("transaction_reference")
+  status               TransactionStatus       @default(PENDING)
+  createdAt            DateTime                @default(now()) @map("created_at")
+
+  wallet               Wallet                  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("wallet_transactions")
+}
+
+model P2pTransfer {
+  id          Int               @id @default(autoincrement())
+  senderId    Int               @map("sender_id")
+  receiverId  Int               @map("receiver_id")
+  amount      Float
+  description String?
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  sender      User              @relation("SenderTransfers", fields: [senderId], references: [id])
+  receiver    User              @relation("ReceiverTransfers", fields: [receiverId], references: [id])
+
+  @@map("p2p_transfers")
+}
+
+model Address {
+  id        Int     @id @default(autoincrement())
+  userId    Int     @map("user_id")
+  street    String
+  city      String
+  state     String
+  country   String
+  latitude  Float?
+  longitude Float?
+  isDefault Boolean @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders     Order[]     @relation("DeliveryAddress")
+  foodOrders FoodOrder[] @relation("FoodDeliveryAddress")
+
+  @@map("addresses")
+}
+
+model Admin {
+  userId   Int    @id @map("user_id")
+  email    String
+  password String
+
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admins")
+}
+
+// 4. E-COMMERCE MODULE
+model ProductCategory {
+  id       Int               @id @default(autoincrement())
+  name     String
+  parentId Int?              @map("parent_id")
+
+  parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children ProductCategory[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id          Int             @id @default(autoincrement())
+  vendorId    Int             @map("vendor_id")
+  name        String
+  description String?
+  price       Float
+  categoryId  Int             @map("category_id")
+  imageUrl    String?         @map("image_url")
+  stock       Int             @default(0)
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  vendor      Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  category    ProductCategory @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  reviews     ProductReview[]
+
+  @@map("products")
+}
+
+model Order {
+  id                Int         @id @default(autoincrement())
+  userId            Int         @map("user_id")
+  total             Float
+  status            OrderStatus @default(PENDING)
+  deliveryAddressId Int         @map("delivery_address_id")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  user            User        @relation(fields: [userId], references: [id])
+  deliveryAddress Address     @relation("DeliveryAddress", fields: [deliveryAddressId], references: [id])
+  items           OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int     @map("order_id")
+  productId Int     @map("product_id")
+  quantity  Int
+  price     Float
+
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model ProductReview {
+  id        Int     @id @default(autoincrement())
+  userId    Int     @map("user_id")
+  productId Int     @map("product_id")
+  rating    Int     // 1-5
+  comment   String?
+
+  user      User    @relation(fields: [userId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("product_reviews")
+}
+
+// 5. AUTOMOBILE MAINTENANCE MODULE
+model AutoService {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  name        String   // e.g. Brake Repair, Engine Diagnostics
+  description String?
+  priceRange  String   @map("price_range")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vendor          Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  repairBookings  RepairBooking[]
+
+  @@map("auto_services")
+}
+
+model VehicleProblem {
+  id                 Int      @id @default(autoincrement())
+  userId             Int      @map("user_id")
+  vehicleMake        String   @map("vehicle_make")
+  vehicleModel       String   @map("vehicle_model")
+  problemDescription String   @map("problem_description")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  user               User               @relation(fields: [userId], references: [id])
+  mechanicAnalysis   MechanicAnalysis[]
+
+  @@map("vehicle_problems")
+}
+
+model MechanicAnalysis {
+  id              Int      @id @default(autoincrement())
+  problemId       Int      @map("problem_id")
+  mechanicId      Int?     @map("mechanic_id") // NULL for future AI
+  diagnosis       String
+  recommendations String
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  problem         VehicleProblem @relation(fields: [problemId], references: [id])
+
+  @@map("mechanic_analysis")
+}
+
+model RepairBooking {
+  id            Int           @id @default(autoincrement())
+  userId        Int           @map("user_id")
+  autoServiceId Int           @map("auto_service_id")
+  scheduleDate  DateTime      @map("schedule_date")
+  status        BookingStatus @default(PENDING)
+
+  user          User          @relation(fields: [userId], references: [id])
+  autoService   AutoService   @relation(fields: [autoServiceId], references: [id])
+
+  @@map("repair_bookings")
+}
+
+// 6. FOOD MODULE
+model FoodMenu {
+  id          Int      @id @default(autoincrement())
+  vendorId    Int      @map("vendor_id")
+  name        String
+  description String?
+  price       Float
+  category    FoodCategory
+  imageUrl    String?  @map("image_url")
+
+  vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  foodOrderItems FoodOrderItem[]
+
+  @@map("food_menus")
+}
+
+model FoodOrder {
+  id                Int         @id @default(autoincrement())
+  userId            Int         @map("user_id")
+  vendorId          Int         @map("vendor_id")
+  total             Float
+  deliveryAddressId Int         @map("delivery_address_id")
+  status            FoodOrderStatus @default(PENDING)
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  user            User            @relation(fields: [userId], references: [id])
+  vendor          Vendor          @relation(fields: [vendorId], references: [id])
+  deliveryAddress Address         @relation("FoodDeliveryAddress", fields: [deliveryAddressId], references: [id])
+  items           FoodOrderItem[]
+
+  @@map("food_orders")
+}
+
+model FoodOrderItem {
+  id       Int      @id @default(autoincrement())
+  orderId  Int      @map("order_id")
+  menuId   Int      @map("menu_id")
+  quantity Int
+  price    Float
+
+  order    FoodOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menu     FoodMenu  @relation(fields: [menuId], references: [id])
+
+  @@map("food_order_items")
+}
+
+// 7. SERVICE APARTMENTS MODULE
+model Apartment {
+  id           Int      @id @default(autoincrement())
+  vendorId     Int      @map("vendor_id")
+  name         String
+  location     String
+  apartmentType ApartmentType @map("apartment_type")
+  pricePerNight Float   @map("price_per_night")
+  features     Json?    // JSON field
+  imageUrls    Json?    @map("image_urls") // JSON field
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  vendor    Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  bookings  ApartmentBooking[]
+
+  @@map("apartments")
+}
+
+model ApartmentBooking {
+  id           Int           @id @default(autoincrement())
+  userId       Int           @map("user_id")
+  apartmentId  Int           @map("apartment_id")
+  checkInDate  DateTime      @map("check_in_date")
+  checkOutDate DateTime      @map("check_out_date")
+  totalPrice   Float         @map("total_price")
+  status       BookingStatus @default(PENDING)
+
+  user      User      @relation(fields: [userId], references: [id])
+  apartment Apartment @relation(fields: [apartmentId], references: [id])
+
+  @@map("apartment_bookings")
+}
+
+// 8. RIDE-HAILING MODULE
+model Rider {
+  id            Int        @id @default(autoincrement())
+  userId        Int        @map("user_id")
+  vendorId      Int        @map("vendor_id")
+  vehicleType   VehicleType @map("vehicle_type")
+  licenseNumber String     @map("license_number")
+  assignedArea  String     @map("assigned_area")
+  status        RiderStatus
+
+  user   User   @relation(fields: [userId], references: [id])
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+  rides  Ride[]
+
+  @@map("riders")
+}
+
+model Ride {
+  id            Int        @id @default(autoincrement())
+  userId        Int        @map("user_id")
+  riderId       Int        @map("rider_id")
+  pickupAddress String     @map("pickup_address")
+  dropoffAddress String   @map("dropoff_address")
+  fare          Float
+  status        RideStatus @default(REQUESTED)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id])
+  rider   Rider    @relation(fields: [riderId], references: [id])
+  gpsLogs GpsLog[]
+
+  @@map("rides")
+}
+
+model GpsLog {
+  id        Int      @id @default(autoincrement())
+  rideId    Int      @map("ride_id")
+  timestamp DateTime
+  latitude  Float
+  longitude Float
+
+  ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  @@map("gps_logs")
+}
+
+// 9. GENERAL SERVICES MODULE
+model ServiceCategory {
+  id       Int               @id @default(autoincrement())
+  name     String
+  parentId Int?              @map("parent_id")
+
+  parent   ServiceCategory?  @relation("ServiceCategoryHierarchy", fields: [parentId], references: [id])
+  children ServiceCategory[] @relation("ServiceCategoryHierarchy")
+  services Service[]
+
+  @@map("service_categories")
+}
+
+model Service {
+  id                Int             @id @default(autoincrement())
+  vendorId          Int             @map("vendor_id")
+  name              String
+  description       String?
+  price             Float
+  serviceCategoryId Int             @map("service_category_id")
+
+  vendor          Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  category        ServiceCategory   @relation(fields: [serviceCategoryId], references: [id])
+  serviceBookings ServiceBooking[]
+
+  @@map("services")
+}
+
+model ServiceBooking {
+  id           Int           @id @default(autoincrement())
+  userId       Int           @map("user_id")
+  serviceId    Int           @map("service_id")
+  scheduleDate DateTime      @map("schedule_date")
+  status       BookingStatus @default(PENDING)
+
+  user    User    @relation(fields: [userId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@map("service_bookings")
+}
+
+// 10. NOTIFICATIONS MODULE
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  type      String
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean  @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ENUMS
+enum UserType {
+  CUSTOMER @map("customer")
+  VENDOR   @map("vendor")
+
+  @@map("user_type")
+}
+
+enum UserStatus {
+  ACTIVE   @map("active")
+  INACTIVE @map("inactive")
+  BANNED   @map("banned")
+
+  @@map("user_status")
+}
+
+enum VendorType {
+  PRODUCT   @map("product")
+  FOOD      @map("food")
+  RIDE      @map("ride")
+  APARTMENT @map("apartment")
+  SERVICE   @map("service")
+
+  @@map("vendor_type")
+}
+
+enum VerificationType {
+  PHONE @map("phone")
+  NIN   @map("NIN")
+  CAC   @map("CAC")
+
+  @@map("verification_type")
+}
+
+enum VerificationStatus {
+  PENDING  @map("pending")
+  VERIFIED @map("verified")
+  FAILED   @map("failed")
+
+  @@map("verification_status")
+}
+
+enum TransactionType {
+  CREDIT @map("credit")
+  DEBIT  @map("debit")
+
+  @@map("transaction_type")
+}
+
+enum TransactionStatus {
+  PENDING @map("pending")
+  SUCCESS @map("success")
+  FAILED  @map("failed")
+
+  @@map("transaction_status")
+}
+
+enum OrderStatus {
+  PENDING   @map("pending")
+  PAID      @map("paid")
+  SHIPPED   @map("shipped")
+  DELIVERED @map("delivered")
+  CANCELLED @map("cancelled")
+
+  @@map("order_status")
+}
+
+enum FoodCategory {
+  MAIN  @map("main")
+  SIDE  @map("side")
+  DRINK @map("drink")
+
+  @@map("food_category")
+}
+
+enum FoodOrderStatus {
+  PENDING   @map("pending")
+  PREPARING @map("preparing")
+  DELIVERED @map("delivered")
+  CANCELLED @map("cancelled")
+
+  @@map("food_order_status")
+}
+
+enum ApartmentType {
+  HOTEL    @map("hotel")
+  SHORTLET @map("shortlet")
+  HOSTEL   @map("hostel")
+
+  @@map("apartment_type")
+}
+
+enum BookingStatus {
+  PENDING   @map("pending")
+  CONFIRMED @map("confirmed")
+  CANCELLED @map("cancelled")
+  COMPLETED @map("completed")
+
+  @@map("booking_status")
+}
+
+enum VehicleType {
+  MOTORCYCLE @map("motorcycle")
+
+  @@map("vehicle_type")
+}
+
+enum RiderStatus {
+  ACTIVE   @map("active")
+  INACTIVE @map("inactive")
+  BUSY     @map("busy")
+
+  @@map("rider_status")
+}
+
+enum RideStatus {
+  REQUESTED @map("requested")
+  ONGOING   @map("ongoing")
+  COMPLETED @map("completed")
+  CANCELLED @map("cancelled")
+
+  @@map("ride_status")
+}
